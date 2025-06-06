@@ -79,6 +79,7 @@ std::expected<cairo_surface_t*, std::string> PNG::createSurfaceFromPNG(const std
         return std::unexpected("loading png: cairo failed");
 
     memcpy(cairo_image_surface_get_data(CAIROSURFACE), rawData.data(), rawData.size());
+    cairo_surface_mark_dirty(CAIROSURFACE);
 
     return CAIROSURFACE;
 }
