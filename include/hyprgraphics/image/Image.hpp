@@ -6,10 +6,14 @@
 #include <hyprutils/memory/SharedPtr.hpp>
 
 namespace Hyprgraphics {
+    enum eImageFormat {
+        IMAGE_FORMAT_PNG
+    };
+
     class CImage {
       public:
-        // create an image from a provided path.
         CImage(const std::string& path);
+        CImage(const std::span<uint8_t>&, eImageFormat);
         ~CImage();
 
         CImage(const CImage&)            = delete;

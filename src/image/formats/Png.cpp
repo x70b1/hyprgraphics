@@ -1,6 +1,7 @@
 #include "Png.hpp"
 #include <cstddef>
 #include <vector>
+#include <memory>
 #include <fstream>
 #include <filesystem>
 #include <cstdint>
@@ -10,7 +11,9 @@
 #include <hyprutils/utils/ScopeGuard.hpp>
 using namespace Hyprutils::Utils;
 
-std::expected<cairo_surface_t*, std::string> PNG::createSurfaceFromPNG(const std::string& path) {
+static std::expected<cairo_surface_t*, std::string> loadPNG(png_structp, png_infop);
+
+std::expected<cairo_surface_t*, std::string>        PNG::createSurfaceFromPNG(const std::string& path) {
     if (!std::filesystem::exists(path))
         return std::unexpected("loading png: file doesn't exist");
 
@@ -32,6 +35,46 @@ std::expected<cairo_surface_t*, std::string> PNG::createSurfaceFromPNG(const std
         return std::unexpected("loading png: couldn't setjmp");
 
     png_init_io(png, fp);
+
+    return loadPNG(png, info);
+}
+
+struct ReadState {
+    const std::span<uint8_t>& data;
+    size_t                    offset;
+};
+
+void custom_read_function(png_structp png, png_bytep data, png_size_t length) {
+    ReadState* state = static_cast<ReadState*>(png_get_io_ptr(png));
+    if (state->offset + length > state->data.size()) {
+        png_error(png, "read error");
+        return;
+    }
+
+    memcpy(data, state->data.data() + state->offset, length);
+    state->offset += length;
+}
+
+std::expected<cairo_surface_t*, std::string> PNG::createSurfaceFromPNG(const std::span<uint8_t>& data) {
+    png_structp png  = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+    png_infop   info = png_create_info_struct(png);
+    if (!png || !info)
+        return std::unexpected("loading png: couldn't init libpng");
+
+    CScopeGuard x([&png, &info] { png_destroy_read_struct(&png, &info, nullptr); });
+
+    if (setjmp(png_jmpbuf(png)))
+        return std::unexpected("loading png: couldn't setjmp");
+
+    ReadState readState = {data, 0};
+
+    png_set_read_fn(png, &readState, custom_read_function);
+    png_set_sig_bytes(png, 0);
+
+    return loadPNG(png, info);
+}
+
+static std::expected<cairo_surface_t*, std::string> loadPNG(png_structp png, png_infop info) {
     png_read_info(png, info);
 
     const size_t W          = png_get_image_width(png, info);
