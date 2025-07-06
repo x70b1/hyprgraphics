@@ -111,6 +111,10 @@ static std::expected<cairo_surface_t*, std::string> loadPNG(png_structp png, png
         uint8_t g               = rawData[i + 1];
         uint8_t b               = rawData[i + 2];
         uint8_t a               = rawData[i + 3];
+
+        r *= ((float)a) / 255.F;
+        g *= ((float)a) / 255.F;
+        b *= ((float)a) / 255.F;
         *(uint32_t*)&rawData[i] = (a << 24) | (r << 16) | (g << 8) | b;
     }
 
