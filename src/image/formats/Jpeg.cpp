@@ -4,6 +4,13 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#include <csetjmp>
+
+// TODO: TurboJPEG C API and get rid of this
+jmp_buf     bailoutBuf = {};
+static void bailout(j_common_ptr _) {
+    longjmp(bailoutBuf, 1);
+}
 
 std::expected<cairo_surface_t*, std::string> JPEG::createSurfaceFromJPEG(const std::string& path) {
 
@@ -19,12 +26,20 @@ std::expected<cairo_surface_t*, std::string> JPEG::createSurfaceFromJPEG(const s
     file.seekg(0);
     file.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
 
+    if (bytes[0] != 0xFF || bytes[1] != 0xD8)
+        return std::unexpected("loading jpeg: invalid magic bytes");
+
     // now the JPEG is in the memory
 
     jpeg_decompress_struct decompressStruct = {};
     jpeg_error_mgr         errorManager     = {};
 
     decompressStruct.err = jpeg_std_error(&errorManager);
+
+    errorManager.error_exit = bailout;
+    if (setjmp(bailoutBuf))
+        return std::unexpected("loading jpeg: libjpeg encountered a fatal error");
+
     jpeg_create_decompress(&decompressStruct);
     jpeg_mem_src(&decompressStruct, bytes.data(), bytes.size());
     jpeg_read_header(&decompressStruct, true);
